@@ -1,10 +1,10 @@
-﻿using Keyfactor.Logging;
-using Microsoft.Extensions.Logging;
+﻿// Ignore Spelling: Spn
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Management.Automation;
 using System.Management.Automation.Runspaces;
+using System.Management.Automation;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
@@ -13,12 +13,11 @@ namespace WinCertDiagnosticTool
 {
     public class PSHelper
     {
-        private static ILogger _logger;
-
-        public static Runspace GetClientPsRunspace(string winRmProtocol, string clientMachineName, string winRmPort, bool includePortInSpn, string serverUserName,  string serverPassword)
+        public static Runspace GetClientPsRunspace(string winRmProtocol, string clientMachineName, string winRmPort, bool includePortInSpn, string serverUserName, string serverPassword)
         {
-            _logger = LogHandler.GetClassLogger<PSHelper>();
-            _logger.MethodEntry();
+            // 2.4 - Client Machine Name now follows the naming conventions of {clientMachineName}|{localMachine}
+            // If the clientMachineName is just 'localhost', it will maintain that as locally only (as previosuly)
+            // If there is no 2nd part to the clientMachineName, a remote PowerShell session will be created
 
             // Break the clientMachineName into parts
             string[] parts = clientMachineName.Split('|');
@@ -27,6 +26,7 @@ namespace WinCertDiagnosticTool
             string machineName = parts.Length > 1 ? parts[0] : clientMachineName;
             string? argument = parts.Length > 1 ? parts[1] : null;
 
+            // Determine if this is truly a local connection
             bool isLocal = (machineName.ToLower() == "localhost") || (argument != null && argument.ToLower() == "localmachine");
 
             if (isLocal)
@@ -35,14 +35,12 @@ namespace WinCertDiagnosticTool
             }
             else
             {
+
                 var connInfo = new WSManConnectionInfo(new Uri($"{winRmProtocol}://{clientMachineName}:{winRmPort}/wsman"));
                 connInfo.IncludePortInSPN = includePortInSpn;
 
-                _logger.LogTrace($"Creating remote session at: {connInfo.ConnectionUri}");
-
                 if (!string.IsNullOrEmpty(serverUserName))
                 {
-                    _logger.LogTrace($"Credentials Specified");
                     var pw = new NetworkCredential(serverUserName, serverPassword).SecurePassword;
                     connInfo.Credential = new PSCredential(serverUserName, pw);
                 }
