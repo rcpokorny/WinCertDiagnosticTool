@@ -37,6 +37,8 @@ namespace WinCertDiagnosticTool
                 string password = "";
 
                 // Ask for connection details
+                string getInventory = PromptForInput("Get Inventory only (Y/N): ", "y");
+                   
                 string machineOrIp = PromptForInput("Client machine or IP address: ", defaultMachineOrIp);
                 if (machineOrIp.ToLower() != "localhost" && machineOrIp.ToLower() != "localmachine")
                 {
@@ -142,31 +144,41 @@ namespace WinCertDiagnosticTool
                     rs.Open();
                     Console.WriteLine("Runspace opened.");
 
-                    if (!string.IsNullOrEmpty(certPath))
+                    if (getInventory.ToLower() == "y")
                     {
-                        ClientPSCertStoreManager manager = new ClientPSCertStoreManager(rs);
-
-                        // Create certificate file on remote computer
-                        Console.WriteLine("Attempting to create the certificate file on the remote computer.");
-                        string remoteFilePath = manager.CreatePFXFile(certificateContents, certPassword);
-                        Console.WriteLine($"Created certificate file on remote host {remoteFilePath}");
-
-                        // Import into cert store
-                        Console.WriteLine($"Attempting to import the certificate into the {storeName} store.");
-                        if (manager.ImportPFXFile(remoteFilePath, certPassword, "", storeName))
+                        Console.WriteLine("Attempting to Get the inventory on the remote computer.");
+                        List<CurrentInventoryItem> items = WinIISInventory.GetInventoryItems(rs, storeName);
+                        Console.WriteLine($"A total of {items.Count} bound certificates were found.");
+                        Console.WriteLine();
+                    }
+                    else
+                    {
+                        if (!string.IsNullOrEmpty(certPath))
                         {
-                            Console.ForegroundColor = ConsoleColor.Green;
-                            Console.WriteLine("The import completed successfully.  Review previous messages for results.");
-                            Console.ResetColor();
-                        }
-                        else
-                        {
-                            Console.ForegroundColor = ConsoleColor.Red;
-                            Console.WriteLine("Import was NOT successful!");
-                            Console.ResetColor();
-                        }
-                    } else Console.WriteLine("No filename was selected.");
+                            ClientPSCertStoreManager manager = new ClientPSCertStoreManager(rs);
 
+                            // Create certificate file on remote computer
+                            Console.WriteLine("Attempting to create the certificate file on the remote computer.");
+                            string remoteFilePath = manager.CreatePFXFile(certificateContents, certPassword);
+                            Console.WriteLine($"Created certificate file on remote host {remoteFilePath}");
+
+                            // Import into cert store
+                            Console.WriteLine($"Attempting to import the certificate into the {storeName} store.");
+                            if (manager.ImportPFXFile(remoteFilePath, certPassword, "", storeName))
+                            {
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine("The import completed successfully.  Review previous messages for results.");
+                                Console.ResetColor();
+                            }
+                            else
+                            {
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.WriteLine("Import was NOT successful!");
+                                Console.ResetColor();
+                            }
+                        }
+                        else Console.WriteLine("No filename was selected.");
+                    }
                 }
                 catch (Exception ex)
                 {
