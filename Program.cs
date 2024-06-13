@@ -37,7 +37,7 @@ namespace WinCertDiagnosticTool
                 string password = "";
 
                 // Ask for connection details
-                string getInventory = PromptForInput("Get Inventory only (Y/N): ", "y");
+                string getInventory = PromptForInput("Get IIS Bound Cert Inventory only (Y/N): ", "y");
                    
                 string machineOrIp = PromptForInput("Client machine or IP address: ", defaultMachineOrIp);
                 if (machineOrIp.ToLower() != "localhost" && machineOrIp.ToLower() != "localmachine")

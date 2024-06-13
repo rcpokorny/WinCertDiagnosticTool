@@ -31,7 +31,11 @@ namespace WinCertDiagnosticTool
 
             if (isLocal)
             {
-                return RunspaceFactory.CreateRunspace();
+                //return RunspaceFactory.CreateRunspace();
+                PowerShellProcessInstance instance = new PowerShellProcessInstance(new Version(5, 1), null, null, false);
+                Runspace rs = RunspaceFactory.CreateOutOfProcessRunspace(new TypeTable(Array.Empty<string>()), instance);
+
+                return rs;
             }
             else
             {
