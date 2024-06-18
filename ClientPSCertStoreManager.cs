@@ -26,12 +26,13 @@ namespace WinCertDiagnosticTool
             {
                 using (PowerShell ps = PowerShell.Create())
                 {
+                    Console.WriteLine("Creating Runsapce");
                     ps.Runspace = _runspace;
 
                     // Add script to write certificate contents to a temporary file
                     string script = @"
                             param($certificateContents)
-                            $filePath = [System.IO.Path]::GetTempFileName() + '.pfx'
+                            $filePath = [System.IO.Path]::GetTempFileName()
                             [System.IO.File]::WriteAllBytes($filePath, [System.Convert]::FromBase64String($certificateContents))
                             $filePath
                             ";
@@ -90,8 +91,8 @@ namespace WinCertDiagnosticTool
                             // Use ImportPFX to import the pfx file with private key password to the appropriate cert store
 
                             string script = @"
-                            param($pfxFilePath, $privateKeyPassword)
-                            $output = certutil -importpfx -p $privateKeyPassword $storePath $pfxFilePath 2>&1
+                            param($pfxFilePath, $privateKeyPassword, $storePath)
+                            $output = certutil -f -importpfx -p $privateKeyPassword $storePath $pfxFilePath 2>&1
                             $exit_message = ""LASTEXITCODE:$($LASTEXITCODE)""
 
                             if ($output.GetType().Name -eq ""String"")

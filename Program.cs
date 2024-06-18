@@ -14,6 +14,10 @@ namespace WinCertDiagnosticTool
         static void Main(string[] args)
         {
             // Define default values
+            string WinCertExtension = "W";      // Value to determine (W)inCert or (I)ISU
+            string WinCertMethod = "P";         // Value to determine to use (C)ertUtil or (P)owerShell commands (2.3.1 version)
+            string WinCertAction = "A";         // Value to determine to (A)dd or I(n)ventory certificates
+
             string defaultProtocol = "http";
             string defaultMachineOrIp = string.Empty;
             string defaultPort = "5985";
@@ -30,6 +34,16 @@ namespace WinCertDiagnosticTool
             while (true)
             {
                 Console.Clear();
+                Console.WriteLine("This WinCert Test Utility can perform a variety of jobs.  These include getting Inventory or adding certificates to a cert store.\n" +
+                    "Users can perform these jobs for both WinCert or IIS.\nAdditionally, these jobs can be performed using CertUtil commands or PowerShell scripts as defined in version 2.3.x.\n" +
+                    "Follow the prompts below to make your suggestions.");
+
+                Console.WriteLine();
+
+                WinCertExtension = PromptForInput("Select which extension to use: (W)inCert or (I)IS: (W/I)", WinCertExtension, "W,I");
+                WinCertMethod = PromptForInput("Select which method to user: (C)ertutil or (P)owerShell: (C/P)", WinCertMethod, "C,P");
+                WinCertAction = PromptForInput("Which Job would you like to perform: I(n)ventory or (A)dd Certificate: (N/A)", WinCertAction, "N,A");
+
 
                 string protocol = "";
                 string port = "";
@@ -37,9 +51,9 @@ namespace WinCertDiagnosticTool
                 string password = "";
 
                 // Ask for connection details
-                string getInventory = PromptForInput("Get IIS Bound Cert Inventory only (Y/N): ", "y");
+                string getInventory = PromptForInput("Get IIS Bound Cert Inventory only (Y/N): ", "y");     // TODO: Don't need this any longer.  Move to specific logic.
                    
-                string machineOrIp = PromptForInput("Client machine or IP address: ", defaultMachineOrIp);
+                string machineOrIp = PromptForInput("Client machine or IP address (localmachine - for no WinRM session): ", defaultMachineOrIp);
                 if (machineOrIp.ToLower() != "localhost" && machineOrIp.ToLower() != "localmachine")
                 {
                     protocol = PromptForInput("Protocol (http/https): ", defaultProtocol);
@@ -47,6 +61,8 @@ namespace WinCertDiagnosticTool
                     username = PromptForInput("Username: ", "");
                     password = PromptForPassword("Password: ", "");
                 }
+
+                // TODO:  If running IIS Add job, need to ask for additional settings to connect to IIS
 
                 // Ask for certificate details
                 while (true)
@@ -284,16 +300,40 @@ namespace WinCertDiagnosticTool
             return password;
         }
 
-        static string PromptForInput(string prompt, string defaultValue)
+        static string PromptForInput(string prompt, string defaultValue, string? validOptions = null)
         {
-            if(string.IsNullOrEmpty(defaultValue))
-            {
-                Console.Write(prompt + ": ");
-            }
-            else Console.Write(prompt + $"[{defaultValue}]: ");
+            string[] validOptionsArray = validOptions?.Split(',').Select(option => option.Trim()).ToArray() ?? Array.Empty<string>();
 
-            string? input = Console.ReadLine();
-            return string.IsNullOrWhiteSpace(input) ? defaultValue : input;
+            while (true)
+            {
+                if (string.IsNullOrEmpty(defaultValue))
+                {
+                    Console.Write(prompt + ": ");
+                }
+                else
+                {
+                    Console.Write(prompt + $"[{defaultValue}]: ");
+                }
+
+                string? input = Console.ReadLine();
+                input = string.IsNullOrWhiteSpace(input) ? defaultValue : input;
+
+                if (validOptionsArray.Length == 0 || validOptionsArray.Contains(input, StringComparer.OrdinalIgnoreCase))
+                {
+                    return input;
+                }
+
+                Console.WriteLine($"Invalid input. Please enter one of the following options: {string.Join(", ", validOptionsArray)}");
+            }
+
+            //if (string.IsNullOrEmpty(defaultValue))
+            //{
+            //    Console.Write(prompt + ": ");
+            //}
+            //else Console.Write(prompt + $"[{defaultValue}]: ");
+
+            //string? input = Console.ReadLine();
+            //return string.IsNullOrWhiteSpace(input) ? defaultValue : input;
         }
 
         static string PromptForPassword(string prompt, string defaultValue)
