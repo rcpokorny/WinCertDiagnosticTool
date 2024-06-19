@@ -11,9 +11,9 @@ using System.Threading.Tasks;
 
 namespace WinCertDiagnosticTool
 {
-    public class PSHelper
+    internal class PSHelper
     {
-        public static Runspace GetClientPsRunspace(string winRmProtocol, string clientMachineName, string winRmPort, bool includePortInSpn, string serverUserName, string serverPassword)
+        public static Runspace GetClientPsRunspace(string clientMachineName, string winRmProtocol = "", string winRmPort = "", bool includePortInSpn = false, string serverUserName = "", string serverPassword = "")
         {
             // 2.4 - Client Machine Name now follows the naming conventions of {clientMachineName}|{localMachine}
             // If the clientMachineName is just 'localhost', it will maintain that as locally only (as previosuly)

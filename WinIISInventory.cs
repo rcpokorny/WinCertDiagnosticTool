@@ -8,12 +8,12 @@ using System.Threading.Tasks;
 
 namespace WinCertDiagnosticTool
 {
-    public class WinIISInventory
+    internal class WinIISInventory : ClientPSCertStoreInventory
     {
-        public static List<CurrentInventoryItem> GetInventoryItems(Runspace runSpace, string storePath)
+        public List<CurrentInventoryItem> GetInventoryItems(Runspace runSpace, string storePath)
         {
             // Get the raw certificate inventory from cert store
-            List<Certificate> certificates = ClientPSCertStoreInventory.GetCertificatesFromStore(runSpace, storePath);
+            List<Certificate> certificates = base.GetCertificatesFromStore(runSpace, storePath);
 
             Console.WriteLine($"A total of {certificates.Count} certificates were found in cert store {storePath}.  Checking for bindings.");
 

@@ -1,5 +1,6 @@
 ﻿// Ignore Spelling: crypto
 
+using Microsoft.CodeAnalysis.FlowAnalysis;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,6 +15,13 @@ namespace WinCertDiagnosticTool
     public class ClientPSCertStoreManager
     {
         private Runspace _runspace;
+
+        private X509Certificate2 x509Cert;
+
+        public X509Certificate2 X509Cert
+        {
+            get { return x509Cert; }
+        }
 
         public ClientPSCertStoreManager(Runspace runspace)
         {
@@ -92,7 +100,7 @@ namespace WinCertDiagnosticTool
 
                             string script = @"
                             param($pfxFilePath, $privateKeyPassword, $storePath)
-                            $output = certutil -f -importpfx -p $privateKeyPassword $storePath $pfxFilePath 2>&1
+                            $output = certutil -importpfx -p $privateKeyPassword $storePath $pfxFilePath 2>&1
                             $exit_message = ""LASTEXITCODE:$($LASTEXITCODE)""
 
                             if ($output.GetType().Name -eq ""String"")
@@ -193,7 +201,9 @@ namespace WinCertDiagnosticTool
                                 outputMsg += "\n" + outputLine;
                             }
                         }
+                        Console.ForegroundColor = ConsoleColor.Red;
                         Console.WriteLine(outputMsg);
+                        Console.ResetColor();
                     }
                     else
                     {
@@ -202,12 +212,16 @@ namespace WinCertDiagnosticTool
                         {
                             string outputLine = result.ToString();
 
+                            Console.ForegroundColor = ConsoleColor.Yellow;
                             Console.WriteLine(outputLine);
+                            Console.ResetColor();
 
                             if (!string.IsNullOrEmpty(outputLine) && outputLine.Contains("Error") || outputLine.Contains("permissions are needed"))
                             {
                                 isError = true;
+                                Console.ForegroundColor = ConsoleColor.Red;
                                 Console.WriteLine(outputLine);
+                                Console.ResetColor();
                             }
                         }
                     }
@@ -250,6 +264,73 @@ namespace WinCertDiagnosticTool
             else
             {
                 throw new Exception("The last element does not contain the expected format.");
+            }
+        }
+
+
+        public bool AddCertificate(string certificateContents, string privateKeyPassword, string storePath, string certFileName = "")
+        {
+            try
+            {
+                using var ps = PowerShell.Create();
+
+                ps.Runspace = _runspace;
+
+                Console.WriteLine($"Creating X509 Cert from: {certFileName}");
+                x509Cert = new X509Certificate2
+                    (
+                        Convert.FromBase64String(certificateContents),
+                        privateKeyPassword,
+                        X509KeyStorageFlags.MachineKeySet |
+                        X509KeyStorageFlags.PersistKeySet |
+                        X509KeyStorageFlags.Exportable
+                    );
+                X500DistinguishedName subjectName = x509Cert.SubjectName;
+                Console.WriteLine($"X509 Cert Created With Subject: {subjectName.Name}");
+                Console.WriteLine($"Begin Add for Cert Store {$@"\\{_runspace.ConnectionInfo.ComputerName}\{storePath}"}");
+
+                // Add Certificate 
+                var funcScript = @"
+                        $ErrorActionPreference = ""Stop""
+
+                        function InstallPfxToMachineStore([byte[]]$bytes, [string]$password, [string]$storeName) {
+                            $certStore = New-Object -TypeName System.Security.Cryptography.X509Certificates.X509Store -ArgumentList $storeName, ""LocalMachine""
+                            $certStore.Open(5)
+                            $cert = New-Object -TypeName System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList $bytes, $password, 18 <# Persist, Machine #>
+                            $certStore.Add($cert)
+
+                            $certStore.Close();
+                        }";
+
+                ps.AddScript(funcScript).AddStatement();
+
+                ps.AddCommand("InstallPfxToMachineStore")
+                    .AddParameter("bytes", Convert.FromBase64String(certificateContents))
+                    .AddParameter("password", privateKeyPassword)
+                    .AddParameter("storeName", $@"\\{_runspace.ConnectionInfo.ComputerName}\{storePath}");
+
+                var results = ps.Invoke();
+                
+                if (ps.HadErrors)
+                {
+                    Console.WriteLine("ps Has Errors");
+                    var psError = ps.Streams.Error.ReadAll()
+                        .Aggregate(string.Empty, (current, error) => current + error?.ErrorDetails.Message);
+
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine(psError);
+                    Console.ResetColor();
+
+                    return false;
+                }
+
+                ps.Commands.Clear();
+                return true;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Error attempting to add certificate: {e.Message}");
+                return false;
             }
         }
 

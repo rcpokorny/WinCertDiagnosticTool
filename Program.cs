@@ -1,4 +1,5 @@
-﻿using System.Management;
+﻿using System.Configuration;
+using System.Management;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
 using System.Net.NetworkInformation;
@@ -16,17 +17,35 @@ namespace WinCertDiagnosticTool
             // Define default values
             string WinCertExtension = "W";      // Value to determine (W)inCert or (I)ISU
             string WinCertMethod = "P";         // Value to determine to use (C)ertUtil or (P)owerShell commands (2.3.1 version)
-            string WinCertAction = "A";         // Value to determine to (A)dd or I(n)ventory certificates
+            string WinCertAction = "A";         // Value to determine to (A)dd or (I)nventory certificates
 
             string defaultProtocol = "http";
-            string defaultMachineOrIp = string.Empty;
+            string defaultMachineOrIp = "";
             string defaultPort = "5985";
             string defaultStore = "My";
 
+            string protocol = "";
+            string port = "";
+
             string certPath = "";
             string certPassword = "";
+            string storeName = "";
+
+            string username = "";
+            string password = "";
+
+            // IIS Properties
+            string IISSiteName = "";
+            string IISIPAddress = "";
+            string IISPort = "";
+            string IISHostName = "";
+            string IISProtocol = "";
+            string IISSniFlag = "";
+
+            bool isLocal = false;
             bool hasPrivateKey = false;
 
+            string renewalThumbprint = "";
             string certificateContents = "";
 
             Runspace rs;
@@ -34,109 +53,151 @@ namespace WinCertDiagnosticTool
             while (true)
             {
                 Console.Clear();
-                Console.WriteLine("This WinCert Test Utility can perform a variety of jobs.  These include getting Inventory or adding certificates to a cert store.\n" +
+                Console.WriteLine("This WinCert Test Utility can perform a variety of jobs.\nThese include getting Inventory or adding certificates to a cert store.\n" +
                     "Users can perform these jobs for both WinCert or IIS.\nAdditionally, these jobs can be performed using CertUtil commands or PowerShell scripts as defined in version 2.3.x.\n" +
                     "Follow the prompts below to make your suggestions.");
 
                 Console.WriteLine();
 
                 WinCertExtension = PromptForInput("Select which extension to use: (W)inCert or (I)IS: (W/I)", WinCertExtension, "W,I");
-                WinCertMethod = PromptForInput("Select which method to user: (C)ertutil or (P)owerShell: (C/P)", WinCertMethod, "C,P");
-                WinCertAction = PromptForInput("Which Job would you like to perform: I(n)ventory or (A)dd Certificate: (N/A)", WinCertAction, "N,A");
-
-
-                string protocol = "";
-                string port = "";
-                string username = "";
-                string password = "";
 
                 // Ask for connection details
-                string getInventory = PromptForInput("Get IIS Bound Cert Inventory only (Y/N): ", "y");     // TODO: Don't need this any longer.  Move to specific logic.
-                   
-                string machineOrIp = PromptForInput("Client machine or IP address (localmachine - for no WinRM session): ", defaultMachineOrIp);
+                string machineOrIp = PromptForInput("Client machine or IP address", defaultMachineOrIp);
+
                 if (machineOrIp.ToLower() != "localhost" && machineOrIp.ToLower() != "localmachine")
                 {
-                    protocol = PromptForInput("Protocol (http/https): ", defaultProtocol);
-                    port = PromptForInput("Port number: ", defaultPort);
-                    username = PromptForInput("Username: ", "");
-                    password = PromptForPassword("Password: ", "");
+                    protocol = PromptForInput("Protocol (http/https)", defaultProtocol);
+                    port = PromptForInput("Port number", defaultPort);
+                    username = PromptForInput("Username", username);
+                    password = PromptForPassword("Password", "");
+                    isLocal = false;
+                }
+                else isLocal = true;
+
+                Console.WriteLine();
+
+                WinCertAction = PromptForInput("Which Action would you like to perform: (I)nventory or (A)dd Certificate: (I/A)", WinCertAction, "I,A");
+
+                // Get the cert store name
+                if(WinCertAction.ToUpper() == "A")
+                {
+                    storeName = PromptForInput("Store name to add the certificate to (e.g., My, Root, etc.)", defaultStore);
+                }
+                else if(WinCertAction.ToUpper() == "I")
+                {
+                    storeName = PromptForInput("Certificate store to Inventory (e.g., My, Root, etc.)", defaultStore);
                 }
 
-                // TODO:  If running IIS Add job, need to ask for additional settings to connect to IIS
+                Console.WriteLine();
 
-                // Ask for certificate details
-                while (true)
+                // Ask for certificate details - only if doing Add jobs
+                if (WinCertAction.ToUpper() == "A")
                 {
-                    certPath = PromptForInput("Path and filename of certificate file: ", "");
-
-                    if (string.IsNullOrEmpty(certPath))
+                    while (true)
                     {
-                        break;
-                    }
-                    else
-                    {
+                        certPath = PromptForInput("Path and filename of certificate file", certPath);
 
-                        if (!File.Exists(certPath))
+                        if (string.IsNullOrEmpty(certPath))
                         {
-                            Console.WriteLine($"File: {certPath} was not found.  Please check the filename again.");
+                            break;
                         }
                         else
                         {
 
-                            certPassword = "";
-                            bool correctPassword = false;
-
-                            while (!correctPassword)
+                            if (!File.Exists(certPath))
                             {
-                                try
+                                Console.WriteLine($"File: {certPath} was not found.  Please check the filename again.");
+                            }
+                            else
+                            {
+
+                                certPassword = "";
+                                bool correctPassword = false;
+
+                                while (!correctPassword)
                                 {
-                                    // Determine whether the pfx contains a private key.  If so, ask for the password
-                                    X509Certificate2 cert = new X509Certificate2(certPath);
-                                    hasPrivateKey = cert.HasPrivateKey;
-                                    correctPassword = true;
-                                }
-                                catch (CryptographicException)
-                                {
-                                    // Must be password protected
                                     try
                                     {
-                                        certPassword = PromptForPassword($"Enter Password for {certPath}:", "");
-                                        X509Certificate2 cert = new X509Certificate2(certPath, certPassword);
+                                        // Determine whether the pfx contains a private key.  If so, ask for the password
+                                        X509Certificate2 cert = new X509Certificate2(certPath);
                                         hasPrivateKey = cert.HasPrivateKey;
                                         correctPassword = true;
                                     }
-                                    catch (Exception ex)
+                                    catch (CryptographicException)
                                     {
-                                        Console.WriteLine(ex.Message);
+                                        // Must be password protected
+                                        try
+                                        {
+                                            certPassword = PromptForPassword($"Enter Password for {certPath}", "");
+                                            X509Certificate2 cert = new X509Certificate2(certPath, certPassword);
+                                            hasPrivateKey = cert.HasPrivateKey;
+                                            correctPassword = true;
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Console.WriteLine(ex.Message);
+                                        }
                                     }
                                 }
+
+
+                                // Got the correct PFX, password; turn it into Base64 to be sent to the remote host
+                                byte[] fileBytes = File.ReadAllBytes(certPath);
+                                certificateContents = Convert.ToBase64String(fileBytes);
+                                break;
                             }
-
-
-                            // Got the correct PFX, password; turn it into Base64 to be sent to the remote host
-                            byte[] fileBytes = File.ReadAllBytes(certPath);
-                            certificateContents = Convert.ToBase64String(fileBytes);
-                            break;
                         }
                     }
+
+                    // Need more info for IIS Add Certificate
+                    if (WinCertExtension.ToUpper() == "I")
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine("Enter IIS Server Info:");
+                        IISSiteName = PromptForInput("IIS Site Name", "Default Web Site");
+                        IISIPAddress = PromptForInput("IP Address", "*");
+                        IISPort = PromptForInput("Port", "443");
+                        IISHostName = PromptForInput("Host Name", "");
+                        IISSniFlag = PromptForInput("SNI Support", "0", "0,1,2,3");
+                        IISProtocol = PromptForInput("Protocol", "https", "http,https");
+                    }
+
                 }
 
-                string storeName = PromptForInput("Store name to add the certificate to (e.g., My, Root, etc.): ", defaultStore);
+                Console.WriteLine();
+
+                // Inventory for any action does not use CertUtil, so no need to ask which method to use
+                if (WinCertAction.ToUpper() == "A")
+                {
+                    WinCertMethod = PromptForInput("Select which method to use: (C)ertutil or (P)owerShell: (C/P)", WinCertMethod, "C,P");
+                }
 
                 Console.WriteLine();
                 Console.WriteLine();
+
 
                 // Perform some checks
-                if (!CheckLocalWinRM())
+                if (!isLocal)
                 {
-                    Console.WriteLine("WinRM is not enabled or running on the local machine.");
+                    if (!CheckLocalWinRM())
+                    {
+                        Console.WriteLine("WinRM is not enabled or running on the local machine.");
+                    }
                 }
 
                 try
                 {
-                    Console.WriteLine("Attempting to connect to remote host and establish PowerShell Runspace.");
-                    rs = PSHelper.GetClientPsRunspace(protocol, machineOrIp, port, false, username, password);
-                    Console.WriteLine("The remote runspace has been created.");
+                    if (!isLocal)
+                    {
+                        Console.WriteLine("Attempting to connect to remote host and establish PowerShell Runspace.");
+                        rs = PSHelper.GetClientPsRunspace(machineOrIp, protocol, port, false, username, password);
+                        Console.WriteLine("The remote runspace has been created.");
+                    }else 
+                    {
+                        Console.WriteLine("Creating a local PowerShell Runspace.");
+                        rs = PSHelper.GetClientPsRunspace(clientMachineName:machineOrIp);
+                        Console.WriteLine("The local runspace has been created.");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -155,46 +216,178 @@ namespace WinCertDiagnosticTool
                     continue;
                 }
 
+                // Update default values with the current inputs
+                defaultProtocol = protocol;
+                defaultMachineOrIp = machineOrIp;
+                defaultPort = port;
+                defaultStore = storeName;
+                defaultMachineOrIp = machineOrIp;
+
+                ClientPSCertStoreManager manager;
                 try
                 {
                     rs.Open();
                     Console.WriteLine("Runspace opened.");
-
-                    if (getInventory.ToLower() == "y")
+                    switch (WinCertExtension.ToUpper())
                     {
-                        Console.WriteLine("Attempting to Get the inventory on the remote computer.");
-                        List<CurrentInventoryItem> items = WinIISInventory.GetInventoryItems(rs, storeName);
-                        Console.WriteLine($"A total of {items.Count} bound certificates were found.");
-                        Console.WriteLine();
-                    }
-                    else
-                    {
-                        if (!string.IsNullOrEmpty(certPath))
-                        {
-                            ClientPSCertStoreManager manager = new ClientPSCertStoreManager(rs);
-
-                            // Create certificate file on remote computer
-                            Console.WriteLine("Attempting to create the certificate file on the remote computer.");
-                            string remoteFilePath = manager.CreatePFXFile(certificateContents, certPassword);
-                            Console.WriteLine($"Created certificate file on remote host {remoteFilePath}");
-
-                            // Import into cert store
-                            Console.WriteLine($"Attempting to import the certificate into the {storeName} store.");
-                            if (manager.ImportPFXFile(remoteFilePath, certPassword, "", storeName))
+                        // WinCert Action
+                        case "W":
+                            switch (WinCertAction.ToUpper())
                             {
-                                Console.ForegroundColor = ConsoleColor.Green;
-                                Console.WriteLine("The import completed successfully.  Review previous messages for results.");
-                                Console.ResetColor();
+                                // Inventory
+                                case "I":
+                                    Console.WriteLine($"Attempting to Get WinCert inventory on the remote computer in store {storeName}.");
+
+                                    WinInventory winInventory = new WinInventory();
+                                    List<CurrentInventoryItem> items = winInventory.GetInventoryItems(rs, storeName);
+
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine($"Cert store: [{storeName}] has a total of {items.Count} certificates.");
+                                    Console.ResetColor();
+                                    Console.WriteLine();
+                                    break;
+
+                                // Add Job
+                                case "A":
+                                    if (!string.IsNullOrEmpty(certPath))
+                                    {
+                                        switch (WinCertMethod.ToUpper())
+                                        {
+                                            // Use Certutil for WinCert Add Job
+                                            case "C":
+                                                if (!string.IsNullOrEmpty(certPath))
+                                                {
+                                                    manager = new ClientPSCertStoreManager(rs);
+
+                                                    // Create certificate file on remote computer
+                                                    Console.WriteLine("Attempting to create the certificate file on the remote computer.");
+                                                    string remoteFilePath = manager.CreatePFXFile(certificateContents, certPassword);
+                                                    Console.WriteLine($"Created certificate file on remote host {remoteFilePath}");
+
+                                                    // Import into cert store
+                                                    Console.WriteLine($"Attempting to import the certificate into the {storeName} store.");
+                                                    if (manager.ImportPFXFile(remoteFilePath, certPassword, "", storeName))
+                                                    {
+                                                        Console.ForegroundColor = ConsoleColor.Green;
+                                                        Console.WriteLine("The import completed successfully.  Review previous messages for results.");
+                                                        Console.ResetColor();
+                                                    }
+                                                    else
+                                                    {
+                                                        Console.ForegroundColor = ConsoleColor.Red;
+                                                        Console.WriteLine("Import was NOT successful!");
+                                                        Console.ResetColor();
+                                                    }
+                                                }
+                                                else Console.WriteLine("No filename was selected.");
+                                                break;
+                                            // use PowerShell for WinCert Add Job
+                                            case "P":
+                                                manager = new ClientPSCertStoreManager(rs);
+                                                if (manager.AddCertificate(certificateContents, certPassword, storeName, certPath))
+                                                {
+                                                    Console.ForegroundColor = ConsoleColor.Green;
+                                                    Console.WriteLine($"Adding cert: {certPath} to cert store {storeName} was successful.");
+                                                    Console.ResetColor();
+                                                }
+                                                else
+                                                {
+                                                    Console.ForegroundColor = ConsoleColor.Red;
+                                                    Console.WriteLine($"Adding cert: {certPath} to cert store {storeName} was not successful.");
+                                                    Console.ResetColor();
+                                                };
+                                                break;
+                                        }
+                                    }
+                                    else Console.WriteLine("No filename was selected.");
+
+                                    break;
                             }
-                            else
+
+                            break;
+
+                            // IISU Action
+                        case "I":
+                            switch (WinCertAction.ToUpper())
                             {
-                                Console.ForegroundColor = ConsoleColor.Red;
-                                Console.WriteLine("Import was NOT successful!");
-                                Console.ResetColor();
+                                // Inventory
+                                case "I":
+                                    Console.WriteLine("Attempting to Get the IIS bound certificate inventory on the remote computer.");
+
+                                    WinIISInventory winIISInventory = new WinIISInventory();
+                                    List<CurrentInventoryItem> items = winIISInventory.GetInventoryItems(rs, storeName);
+
+                                    Console.ForegroundColor = ConsoleColor.Green;
+                                    Console.WriteLine($"A total of {items.Count} bound certificates were found.");
+                                    Console.ResetColor();
+                                    Console.WriteLine();
+
+                                    break;
+
+                                // Add Job
+                                case "A":
+                                    if (!string.IsNullOrEmpty(certPath))
+                                    {
+                                        switch (WinCertMethod.ToUpper())
+                                        {
+                                            // Use Certutil for IISU Add Job
+                                            case "C":
+                                                Console.ForegroundColor = ConsoleColor.Yellow;
+                                                Console.WriteLine($"This function is currently not available.");
+                                                Console.ResetColor();
+                                                break;
+                                            // use PowerShell for IISU Add Job
+                                            case "P":
+                                                manager = new ClientPSCertStoreManager(rs);
+                                                if (manager.AddCertificate(certificateContents, certPassword, storeName, certPath))
+                                                {
+                                                    Console.ForegroundColor = ConsoleColor.Green;
+                                                    Console.WriteLine($"Adding cert: {certPath} to cert store {storeName} was successful.");
+                                                    Console.ResetColor();
+
+                                                    Console.WriteLine("Attempting to bind the certificate.");
+
+                                                    IISConfiguration iisConfig = new IISConfiguration();
+                                                    iisConfig.SiteName = IISSiteName;
+                                                    iisConfig.IPAddress = IISIPAddress;
+                                                    iisConfig.Port = IISPort;
+                                                    iisConfig.HostName = IISHostName;
+                                                    iisConfig.SniFlag = IISSniFlag;
+                                                    iisConfig.Protocol = IISProtocol;
+
+                                                    ClientPSIISManager iisManager = new ClientPSIISManager(iisConfig, username, password, protocol, machineOrIp, port, false, storeName);
+
+                                                    bool success = iisManager.BindCertificate(manager.X509Cert);
+                                                    if (success)
+                                                    {
+                                                        Console.ForegroundColor = ConsoleColor.Green;
+                                                        Console.WriteLine($"Binding the certificate to the site {IISSiteName} was successful.");
+                                                        Console.ResetColor();
+                                                    } else
+                                                    {
+                                                        Console.ForegroundColor = ConsoleColor.Red;
+                                                        Console.WriteLine($"Binding the certificate to the site {IISSiteName} was not successful.");
+                                                        Console.ResetColor();
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    Console.ForegroundColor = ConsoleColor.Red;
+                                                    Console.WriteLine($"Adding cert: {certPath} to cert store {storeName} was not successful.");
+                                                    Console.ResetColor();
+                                                };
+                                                break;
+                                        }
+                                    }
+                                    else Console.WriteLine("No filename was selected.");
+                                    
+                                    break;
                             }
-                        }
-                        else Console.WriteLine("No filename was selected.");
+
+                            break;
                     }
+
+
                 }
                 catch (Exception ex)
                 {
@@ -205,12 +398,6 @@ namespace WinCertDiagnosticTool
                     rs.Close();
                     Console.WriteLine("Runspace closed.");
                 }
-
-                // Update default values with the current inputs
-                defaultProtocol = protocol;
-                defaultMachineOrIp = machineOrIp;
-                defaultPort = port;
-                defaultStore = storeName;
 
                 // Prompt to continue or exit
                 Console.WriteLine();

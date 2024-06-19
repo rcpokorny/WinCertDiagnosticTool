@@ -8,9 +8,9 @@ using System.Threading.Tasks;
 
 namespace WinCertDiagnosticTool
 {
-    public static class ClientPSCertStoreInventory
+    abstract class ClientPSCertStoreInventory
     {
-        public static List<Certificate> GetCertificatesFromStore(Runspace runSpace, string storePath)
+        public List<Certificate> GetCertificatesFromStore(Runspace runSpace, string storePath)
         {
             List<Certificate> myCertificates = new List<Certificate>();
             try
